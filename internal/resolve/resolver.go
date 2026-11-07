@@ -3,6 +3,7 @@ package resolve
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,30 +20,53 @@ const (
 )
 
 // Profile picks the profile for cwd in this order: GHX_PROFILE, the nearest .ghx file,
-// the ssh host or https user of the origin remote, the deepest configured dir containing cwd, then default.
-// No match means plain gh.
-func Profile(cfg config.Config, cwd string, override string, remoteURL RemoteURL) Match {
+// the ssh host or https user of the origin remote, the deepest configured dir containing cwd (or, in a
+// linked git worktree, its main checkout), then default. No match means plain gh. The error is an
+// *UnknownProfileError, returned only with profiles_only.
+func Profile(cfg config.Config, cwd string, override string, remoteURL RemoteURL) (Match, error) {
 	if override != "" {
-		return named(cfg, override, overrideSource)
+		return requested(cfg, override, overrideSource)
 	}
 	current := canonical(cwd)
 	if name, file := nearestRepoFile(current); name != "" {
-		return named(cfg, name, file)
+		return requested(cfg, name, file)
 	}
 	if match := fromOrigin(cfg, current, remoteURL); match.Found() {
-		return match
+		return match, nil
 	}
-	if match := deepestDir(cfg, current); match.Found() {
-		return match
+	if match := dirsMatch(cfg, current); match.Found() {
+		return match, nil
 	}
 	if cfg.Default != "" {
-		return named(cfg, cfg.Default, defaultSource)
+		return named(cfg, cfg.Default, defaultSource), nil
 	}
-	return Match{}
+	return Match{}, nil
+}
+
+// UnknownProfileError reports a GHX_PROFILE value or a .ghx file that names no profile
+// while profiles_only is set. Source is GHX_PROFILE or the path of the .ghx file.
+type UnknownProfileError struct {
+	Name   string
+	Source string
+}
+
+func (err *UnknownProfileError) Error() string {
+	return fmt.Sprintf("%s names %q, which is not a profile (profiles_only: true)", err.Source, err.Name)
+}
+
+// requested resolves a name someone asked for explicitly, in GHX_PROFILE or a .ghx file.
+// With profiles_only, a name that is not a profile is an error: falling back to another
+// rule would run gh as an account other than the one asked for.
+func requested(cfg config.Config, name string, source string) (Match, error) {
+	if _, ok := cfg.Profiles[name]; !ok && cfg.ProfilesOnly {
+		return Match{}, &UnknownProfileError{Name: name, Source: source}
+	}
+	return named(cfg, name, source), nil
 }
 
 // named treats a name with no matching profile as a gh user on github.com, so a .ghx file
-// works without any global config.
+// works without any global config. Config validation keeps dirs, ssh_hosts and default
+// pointing at real profiles, so only requested names reach the fallback.
 func named(cfg config.Config, name string, source string) Match {
 	profile, ok := cfg.Profiles[name]
 	if !ok {
@@ -76,6 +100,8 @@ func sshHost(cfg config.Config, remote string) Match {
 }
 
 // userInRemote prefers the profile with that login and host, else uses the login directly.
+// With profiles_only an unknown login is no match, so resolution falls through to dirs and default:
+// a remote URL is not written as a profile selector.
 func userInRemote(cfg config.Config, remote string) Match {
 	user, host := remoteUser(remote)
 	if user == "" {
@@ -87,11 +113,32 @@ func userInRemote(cfg config.Config, remote string) Match {
 			return Match{ProfileName: name, Profile: profile, Source: source}
 		}
 	}
+	if cfg.ProfilesOnly {
+		return Match{}
+	}
 	profile := config.Profile{User: user}
 	if host != config.DefaultHost {
 		profile.Host = host
 	}
 	return Match{ProfileName: user, Profile: profile, Source: source}
+}
+
+// dirsMatch matches cwd itself first. Only when no dirs entry contains it, and cwd is in a linked
+// worktree, is the worktree's main checkout matched instead.
+func dirsMatch(cfg config.Config, current string) Match {
+	match := deepestDir(cfg, current)
+	if match.Found() || len(cfg.Dirs) == 0 || !cfg.FollowsWorktrees() {
+		return match
+	}
+	mainCheckout := worktreeMainCheckout(current)
+	if mainCheckout == "" {
+		return Match{}
+	}
+	match = deepestDir(cfg, mainCheckout)
+	if match.Found() {
+		match.WorktreeMain = mainCheckout
+	}
+	return match
 }
 
 func deepestDir(cfg config.Config, current string) Match {

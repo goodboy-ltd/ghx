@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -74,10 +76,18 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	match := resolve.Profile(cfg, cwd, os.Getenv(profileOverrideEnv), resolve.GitOriginURL)
+	match, resolveErr := resolve.Profile(cfg, cwd, os.Getenv(profileOverrideEnv), resolve.GitOriginURL)
 	applyGitIdentity(cfg, match, cwd)
 	if len(args) > 0 && args[0] == metaCommand {
-		return runMeta(args[1:], match, ghPath, updater)
+		return runMeta(args[1:], match, resolveErr, ghPath, updater)
+	}
+	// A refused profile (profiles_only) blocks only commands that need a token, so
+	// gh auth login and gh auth status still run as plain gh and the user can repair the setup.
+	if resolveErr != nil {
+		if proxy.NeedsToken(args) {
+			return resolveErr
+		}
+		fmt.Fprintln(os.Stderr, "ghx:", resolveErr)
 	}
 	env, err := buildEnv(args, match, ghPath)
 	if err != nil {
@@ -91,15 +101,18 @@ func run(args []string) error {
 	return nil
 }
 
-func runMeta(args []string, match resolve.Match, ghPath string, updater update.Updater) error {
+func runMeta(args []string, match resolve.Match, resolveErr error, ghPath string, updater update.Updater) error {
 	command := "help"
 	if len(args) > 0 {
 		command = args[0]
 	}
 	switch command {
 	case "which":
-		printWhich(match, ghPath, updater.Self.Policy)
+		printWhich(os.Stdout, match, resolveErr, ghPath, os.Environ(), updater.Self.Policy)
 	case "current":
+		if resolveErr != nil {
+			return resolveErr
+		}
 		if match.Found() {
 			fmt.Println(match.ProfileName)
 		}
@@ -229,12 +242,26 @@ func buildEnv(args []string, match resolve.Match, ghPath string) ([]string, erro
 	return proxy.WithProfile(env, match.Profile, token), nil
 }
 
-func printWhich(match resolve.Match, ghPath string, policy update.Policy) {
-	if !match.Found() {
-		fmt.Printf("profile: none (plain gh)\ngh:      %s\nupdates: %s\n", config.AbbreviateHome(ghPath), policy.Describe())
+func printWhich(out io.Writer, match resolve.Match, resolveErr error, ghPath string, env []string, policy update.Policy) {
+	var unknown *resolve.UnknownProfileError
+	if errors.As(resolveErr, &unknown) {
+		fmt.Fprintf(out, "profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\ngh:      %s\nupdates: %s\n",
+			unknown.Name, config.AbbreviateHome(unknown.Source), config.AbbreviateHome(ghPath), policy.Describe())
 		return
 	}
-	fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\nupdates: %s\n",
+	if !match.Found() {
+		fmt.Fprintf(out, "profile: none (plain gh)\ngh:      %s\nupdates: %s\n", config.AbbreviateHome(ghPath), policy.Describe())
+		return
+	}
+	source := config.AbbreviateHome(match.Source)
+	if match.WorktreeMain != "" {
+		source += " (via worktree main checkout " + config.AbbreviateHome(match.WorktreeMain) + ")"
+	}
+	fmt.Fprintf(out, "profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\nupdates: %s\n",
 		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
-		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath), policy.Describe())
+		source, config.AbbreviateHome(ghPath), policy.Describe())
+	// buildEnv leaves an inherited token in place, so the profile's own token is never used.
+	if name := proxy.ExplicitTokenVar(env); name != "" {
+		fmt.Fprintf(out, "token:   overridden by %s (unset it to use the profile's token)\n", name)
+	}
 }

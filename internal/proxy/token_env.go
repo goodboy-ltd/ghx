@@ -25,7 +25,19 @@ func NeedsToken(args []string) bool {
 }
 
 func HasExplicitToken(env []string) bool {
-	return lookup(env, tokenEnv) != "" || lookup(env, enterpriseTokenEnv) != ""
+	return ExplicitTokenVar(env) != ""
+}
+
+// ExplicitTokenVar names the token variable already set in env, which ghx leaves in place of the
+// profile's token, or returns "" when there is none. GITHUB_TOKEN and GITHUB_ENTERPRISE_TOKEN are
+// not listed: gh prefers the GH_ variables ghx sets over them.
+func ExplicitTokenVar(env []string) string {
+	for _, key := range []string{tokenEnv, enterpriseTokenEnv} {
+		if lookup(env, key) != "" {
+			return key
+		}
+	}
+	return ""
 }
 
 func FetchToken(ghPath string, profile config.Profile) (string, error) {

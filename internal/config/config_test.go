@@ -28,20 +28,22 @@ ssh_hosts:
 
 func TestParseRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"missing user":             "profiles: {work: {host: x}}",
-		"unknown dir profile":      "profiles: {work: {user: a}}\ndirs: {~/x: nope}",
-		"unknown ssh host profile": "profiles: {work: {user: a}}\nssh_hosts: {gh1: nope}",
-		"unknown default profile":  "profiles: {work: {user: a}}\ndefault: nope",
-		"bad profile git_identity": "profiles: {work: {user: a, git_identity: never}}",
-		"bad global git_identity":  "git_identity: never",
-		"bad yaml":                 "profiles: [",
-		"update_repo traversal":    "update_repo: ../x",
-		"update_repo no slash":     "update_repo: ghx",
-		"update_repo dot":          "update_repo: a/.",
-		"update_repo dot dot":      "update_repo: a/..",
-		"update_repo extra slash":  "update_repo: a/b/c",
-		"update_repo query":        "update_repo: a/b?x=1",
-		"self_update not a bool":   "self_update: sometimes",
+		"missing user":               "profiles: {work: {host: x}}",
+		"unknown dir profile":        "profiles: {work: {user: a}}\ndirs: {~/x: nope}",
+		"unknown ssh host profile":   "profiles: {work: {user: a}}\nssh_hosts: {gh1: nope}",
+		"unknown default profile":    "profiles: {work: {user: a}}\ndefault: nope",
+		"bad profile git_identity":   "profiles: {work: {user: a, git_identity: never}}",
+		"bad global git_identity":    "git_identity: never",
+		"bad yaml":                   "profiles: [",
+		"profiles_only, no profiles": "profiles_only: true",
+		"non-bool follow worktrees":  "dirs_follow_worktrees: maybe",
+		"update_repo traversal":      "update_repo: ../x",
+		"update_repo no slash":       "update_repo: ghx",
+		"update_repo dot":            "update_repo: a/.",
+		"update_repo dot dot":        "update_repo: a/..",
+		"update_repo extra slash":    "update_repo: a/b/c",
+		"update_repo query":          "update_repo: a/b?x=1",
+		"self_update not a bool":     "self_update: sometimes",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -49,6 +51,36 @@ func TestParseRejectsInvalid(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestFollowsWorktrees(t *testing.T) {
+	cases := map[string]bool{
+		"":                             true,
+		"dirs_follow_worktrees: true":  true,
+		"dirs_follow_worktrees: false": false,
+	}
+	for content, want := range cases {
+		t.Run(content, func(t *testing.T) {
+			cfg, err := Parse([]byte(content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.FollowsWorktrees(); got != want {
+				t.Fatalf("got %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestParseProfilesOnly(t *testing.T) {
+	cfg, err := Parse([]byte("profiles_only: true\nprofiles: {work: {user: a}}"))
+	if err != nil || !cfg.ProfilesOnly {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	cfg, err = Parse([]byte("profiles: {work: {user: a}}"))
+	if err != nil || cfg.ProfilesOnly {
+		t.Fatalf("profiles_only should default to false: got %+v, %v", cfg, err)
 	}
 }
 

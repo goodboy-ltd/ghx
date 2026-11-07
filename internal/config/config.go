@@ -20,9 +20,17 @@ type Config struct {
 	Dirs           map[string]string  `yaml:"dirs"`
 	SSHHosts       map[string]string  `yaml:"ssh_hosts"`
 	RemoteUser     bool               `yaml:"remote_user"`
+	ProfilesOnly   bool               `yaml:"profiles_only"`
 	Name           string             `yaml:"name"`
 	Email          string             `yaml:"email"`
 	GitIdentity    string             `yaml:"git_identity"`
+	// DirsFollowWorktrees is nil when the key is absent, which means on.
+	DirsFollowWorktrees *bool `yaml:"dirs_follow_worktrees"`
+}
+
+// FollowsWorktrees reports whether a linked git worktree matches dirs through its main checkout.
+func (cfg Config) FollowsWorktrees() bool {
+	return cfg.DirsFollowWorktrees == nil || *cfg.DirsFollowWorktrees
 }
 
 // Load returns an empty Config when the file does not exist, so ghx acts as plain gh.
@@ -49,6 +57,9 @@ func Parse(content []byte) (Config, error) {
 }
 
 func (cfg Config) validate() error {
+	if cfg.ProfilesOnly && len(cfg.Profiles) == 0 {
+		return errors.New("profiles_only needs at least one profile")
+	}
 	for name, profile := range cfg.Profiles {
 		if profile.User == "" {
 			return fmt.Errorf("profile %q: user is required", name)

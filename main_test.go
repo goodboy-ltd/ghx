@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/barnuri/ghx/internal/config"
+	"github.com/barnuri/ghx/internal/resolve"
 	"github.com/barnuri/ghx/internal/update"
 )
 
@@ -96,5 +98,50 @@ func TestUpdatePlanRejectsInvalidBuildVars(t *testing.T) {
 func TestDefaultBuildVarsAreUpstreams(t *testing.T) {
 	if updateRepo != "barnuri/ghx" || selfUpdate != "on" || packageManager != "" {
 		t.Fatalf("defaults changed: %q %q %q", updateRepo, selfUpdate, packageManager)
+	}
+}
+
+func TestPrintWhichReportsTokenOverride(t *testing.T) {
+	matched := resolve.Match{ProfileName: "work", Profile: config.Profile{User: "octocat"}, Source: "/tmp/.ghx"}
+	cases := map[string]struct {
+		match resolve.Match
+		env   []string
+		want  string
+	}{
+		"GH_TOKEN set":            {matched, []string{"GH_TOKEN=x"}, "token:   overridden by GH_TOKEN"},
+		"GH_ENTERPRISE_TOKEN set": {matched, []string{"GH_ENTERPRISE_TOKEN=x"}, "token:   overridden by GH_ENTERPRISE_TOKEN"},
+		"no token":                {matched, []string{"PATH=/bin"}, ""},
+		"no profile":              {resolve.Match{}, []string{"GH_TOKEN=x"}, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			printWhich(&out, tc.match, nil, "/usr/bin/gh", tc.env, update.Policy{})
+			got := out.String()
+			if tc.want == "" {
+				if strings.Contains(got, "token:") {
+					t.Fatalf("unexpected token line in %q", got)
+				}
+				return
+			}
+			if !strings.Contains(got, "\n"+tc.want) {
+				t.Fatalf("output %q lacks %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPrintWhichShowsRefusedProfileSource(t *testing.T) {
+	refused := &resolve.UnknownProfileError{Name: "stranger", Source: "/repo/.ghx"}
+	var out bytes.Buffer
+	printWhich(&out, resolve.Match{}, refused, "/usr/bin/gh", []string{"GH_TOKEN=x"}, update.Policy{})
+	got := out.String()
+	for _, want := range []string{"profile: stranger (refused: not a profile, profiles_only: true)\n", "source:  /repo/.ghx\n"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output %q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, "token:") {
+		t.Fatalf("unexpected token line in %q", got)
 	}
 }
