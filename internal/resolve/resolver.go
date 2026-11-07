@@ -19,8 +19,8 @@ const (
 )
 
 // Profile picks the profile for cwd in this order: GHX_PROFILE, the nearest .ghx file,
-// the ssh host or https user of the origin remote, the deepest configured dir containing cwd, then default.
-// No match means plain gh.
+// the ssh host or https user of the origin remote, the deepest configured dir containing cwd (or, in a
+// linked git worktree, its main checkout), then default. No match means plain gh.
 func Profile(cfg config.Config, cwd string, override string, remoteURL RemoteURL) Match {
 	if override != "" {
 		return named(cfg, override, overrideSource)
@@ -32,7 +32,7 @@ func Profile(cfg config.Config, cwd string, override string, remoteURL RemoteURL
 	if match := fromOrigin(cfg, current, remoteURL); match.Found() {
 		return match
 	}
-	if match := deepestDir(cfg, current); match.Found() {
+	if match := dirsMatch(cfg, current); match.Found() {
 		return match
 	}
 	if cfg.Default != "" {
@@ -92,6 +92,24 @@ func userInRemote(cfg config.Config, remote string) Match {
 		profile.Host = host
 	}
 	return Match{ProfileName: user, Profile: profile, Source: source}
+}
+
+// dirsMatch matches cwd itself first. Only when no dirs entry contains it, and cwd is in a linked
+// worktree, is the worktree's main checkout matched instead.
+func dirsMatch(cfg config.Config, current string) Match {
+	match := deepestDir(cfg, current)
+	if match.Found() || len(cfg.Dirs) == 0 || !cfg.FollowsWorktrees() {
+		return match
+	}
+	mainCheckout := worktreeMainCheckout(current)
+	if mainCheckout == "" {
+		return Match{}
+	}
+	match = deepestDir(cfg, mainCheckout)
+	if match.Found() {
+		match.WorktreeMain = mainCheckout
+	}
+	return match
 }
 
 func deepestDir(cfg config.Config, current string) Match {

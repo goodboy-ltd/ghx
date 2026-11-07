@@ -163,7 +163,11 @@ func printWhich(match resolve.Match, ghPath string) {
 		fmt.Printf("profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
 		return
 	}
+	source := config.AbbreviateHome(match.Source)
+	if match.WorktreeMain != "" {
+		source += " (via worktree main checkout " + config.AbbreviateHome(match.WorktreeMain) + ")"
+	}
 	fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\n",
 		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
-		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath))
+		source, config.AbbreviateHome(ghPath))
 }

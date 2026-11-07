@@ -19,6 +19,13 @@ type Config struct {
 	Name           string             `yaml:"name"`
 	Email          string             `yaml:"email"`
 	GitIdentity    string             `yaml:"git_identity"`
+	// DirsFollowWorktrees is nil when the key is absent, which means on.
+	DirsFollowWorktrees *bool `yaml:"dirs_follow_worktrees"`
+}
+
+// FollowsWorktrees reports whether a linked git worktree matches dirs through its main checkout.
+func (cfg Config) FollowsWorktrees() bool {
+	return cfg.DirsFollowWorktrees == nil || *cfg.DirsFollowWorktrees
 }
 
 // Load returns an empty Config when the file does not exist, so ghx acts as plain gh.

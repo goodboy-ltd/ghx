@@ -28,18 +28,38 @@ ssh_hosts:
 
 func TestParseRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"missing user":             "profiles: {work: {host: x}}",
-		"unknown dir profile":      "profiles: {work: {user: a}}\ndirs: {~/x: nope}",
-		"unknown ssh host profile": "profiles: {work: {user: a}}\nssh_hosts: {gh1: nope}",
-		"unknown default profile":  "profiles: {work: {user: a}}\ndefault: nope",
-		"bad profile git_identity": "profiles: {work: {user: a, git_identity: never}}",
-		"bad global git_identity":  "git_identity: never",
-		"bad yaml":                 "profiles: [",
+		"missing user":              "profiles: {work: {host: x}}",
+		"unknown dir profile":       "profiles: {work: {user: a}}\ndirs: {~/x: nope}",
+		"unknown ssh host profile":  "profiles: {work: {user: a}}\nssh_hosts: {gh1: nope}",
+		"unknown default profile":   "profiles: {work: {user: a}}\ndefault: nope",
+		"bad profile git_identity":  "profiles: {work: {user: a, git_identity: never}}",
+		"bad global git_identity":   "git_identity: never",
+		"bad yaml":                  "profiles: [",
+		"non-bool follow worktrees": "dirs_follow_worktrees: maybe",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Parse([]byte(content)); err == nil {
 				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestFollowsWorktrees(t *testing.T) {
+	cases := map[string]bool{
+		"":                             true,
+		"dirs_follow_worktrees: true":  true,
+		"dirs_follow_worktrees: false": false,
+	}
+	for content, want := range cases {
+		t.Run(content, func(t *testing.T) {
+			cfg, err := Parse([]byte(content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.FollowsWorktrees(); got != want {
+				t.Fatalf("got %v, want %v", got, want)
 			}
 		})
 	}

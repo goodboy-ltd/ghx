@@ -20,6 +20,9 @@ ssh_hosts:
   gh-work: work
   gh-personal: personal
 
+# A linked git worktree outside every dirs folder matches through its main checkout. Default: true.
+# dirs_follow_worktrees: false
+
 # remote_user: true
 # default: personal
 # manage_gh: true

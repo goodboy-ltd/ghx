@@ -83,11 +83,30 @@ Full example: [examples/config.yaml](examples/config.yaml).
 | `profiles.<name>.git_identity` | `once` or `always`. See below |
 | `name` / `email` / `git_identity` | Fallback for each profile that does not set the key |
 | `dirs` | folder -> profile. The deepest matching folder wins |
+| `dirs_follow_worktrees` | `false` stops a linked git worktree from matching `dirs` through its main checkout. Default: `true`. See below |
 | `ssh_hosts` | ssh host alias in the `origin` remote URL -> profile. See below |
 | `remote_user` | `true` uses the username in an https `origin` remote URL. See below |
 | `default` | profile for folders outside every `dirs` entry. Default: plain gh |
 | `manage_gh` | `true` makes ghx download gh and keep it updated. Default: use gh from `PATH` |
 | `disable_updates` | `true` stops the daily ghx update check |
+
+### Git worktrees: `dirs_follow_worktrees`
+
+A linked worktree created outside the main checkout (`git worktree add ../repo-feature`) is not
+inside any `dirs` folder. When no `dirs` entry contains the current folder, ghx checks whether it
+is in a linked worktree and, if so, matches `dirs` against the worktree's main checkout instead.
+A `dirs` entry that contains the current folder itself still wins.
+
+ghx finds the main checkout by reading files, without running git: the worktree's `.git` file
+names `<main>/.git/worktrees/<name>`, and that folder's `gitdir` file must point back at the
+worktree. Submodules and `--separate-git-dir` repos are not followed. `gh ghx which` shows the
+match as `source: <dirs folder> (via worktree main checkout <main>)`.
+
+To turn it off:
+
+```yaml
+dirs_follow_worktrees: false
+```
 
 ### Per-repo file: `.ghx`
 
@@ -168,7 +187,8 @@ With no matched profile, ghx does not change git config.
 2. Nearest `.ghx` file
 3. `ssh_hosts` entry for the `origin` remote's host
 4. Username in the `origin` remote URL, when `remote_user` is `true`
-5. Deepest matching `dirs` entry
+5. Deepest matching `dirs` entry, then, in a linked git worktree, the deepest `dirs` entry that
+   matches its main checkout
 6. `default`
 7. No match: plain gh, with your active gh account
 
