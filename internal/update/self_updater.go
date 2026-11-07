@@ -15,13 +15,20 @@ const (
 	devVersion       = "dev"
 )
 
+// ReleaseClient is the part of release.Client the self-updater uses, so tests can fake it.
+type ReleaseClient interface {
+	Latest(repo string) (release.Release, error)
+	DownloadVerified(asset release.Asset, checksums release.Asset) ([]byte, error)
+}
+
 type SelfUpdater struct {
-	Client         release.Client
+	Client         ReleaseClient
 	CurrentVersion string
 }
 
-// Update replaces the running ghx binary with the latest release. It returns the new version,
-// or "" when ghx is already current or is a local dev build.
+// Update replaces the running ghx binary with the latest release when that release is newer.
+// It returns the new version, or "" when ghx is current, ahead of the latest release, or a
+// local dev build. An unparsable version on either side is an error, never an update.
 func (updater SelfUpdater) Update() (string, error) {
 	if updater.CurrentVersion == devVersion {
 		return "", nil
@@ -30,7 +37,11 @@ func (updater SelfUpdater) Update() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if latest.Version() == updater.CurrentVersion {
+	order, err := compareVersions(latest.Version(), updater.CurrentVersion)
+	if err != nil {
+		return "", fmt.Errorf("compare release %s with ghx %s: %w", latest.TagName, updater.CurrentVersion, err)
+	}
+	if order <= 0 {
 		return "", nil
 	}
 	asset, found := latest.Find(ghxAssetName())
