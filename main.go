@@ -182,9 +182,13 @@ func printWhich(out io.Writer, match resolve.Match, resolveErr error, ghPath str
 		fmt.Fprintf(out, "profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
 		return
 	}
+	source := config.AbbreviateHome(match.Source)
+	if match.WorktreeMain != "" {
+		source += " (via worktree main checkout " + config.AbbreviateHome(match.WorktreeMain) + ")"
+	}
 	fmt.Fprintf(out, "profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\n",
 		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
-		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath))
+		source, config.AbbreviateHome(ghPath))
 	// buildEnv leaves an inherited token in place, so the profile's own token is never used.
 	if name := proxy.ExplicitTokenVar(env); name != "" {
 		fmt.Fprintf(out, "token:   overridden by %s (unset it to use the profile's token)\n", name)

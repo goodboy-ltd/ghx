@@ -36,11 +36,31 @@ func TestParseRejectsInvalid(t *testing.T) {
 		"bad global git_identity":    "git_identity: never",
 		"bad yaml":                   "profiles: [",
 		"profiles_only, no profiles": "profiles_only: true",
+		"non-bool follow worktrees":  "dirs_follow_worktrees: maybe",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Parse([]byte(content)); err == nil {
 				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestFollowsWorktrees(t *testing.T) {
+	cases := map[string]bool{
+		"":                             true,
+		"dirs_follow_worktrees: true":  true,
+		"dirs_follow_worktrees: false": false,
+	}
+	for content, want := range cases {
+		t.Run(content, func(t *testing.T) {
+			cfg, err := Parse([]byte(content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.FollowsWorktrees(); got != want {
+				t.Fatalf("got %v, want %v", got, want)
 			}
 		})
 	}
