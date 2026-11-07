@@ -152,6 +152,7 @@ Full example: [examples/config.yaml](examples/config.yaml).
 | `remote_user` | `true` uses the username in an https `origin` remote URL. See below |
 | `default` | profile for folders outside every `dirs` entry. Default: plain gh |
 | `profiles_only` | `true` refuses a `GHX_PROFILE` or `.ghx` name that is not a profile. See below |
+| `ghx_file_strict` | `false` reads a `.ghx` in any parent folder, from anyone. Default: `true`. See below |
 | `manage_gh` | `true` makes ghx download gh and keep it updated. Default: use gh from `PATH` |
 | `disable_updates` | `true` stops the daily ghx update check |
 | `self_update` | `true` or `false` turns ghx's self-update on or off. Default: the build's setting (on for these releases) |
@@ -185,7 +186,18 @@ echo personal > .ghx
 echo .ghx >> .git/info/exclude   # or add it to .gitignore
 ```
 
-ghx uses the nearest `.ghx` in the current folder or any parent folder.
+ghx uses the nearest `.ghx` in the current folder or a parent folder, up to the repository's top
+folder (the nearest folder with a `.git` entry), the way git scopes `.gitignore`. Outside a
+repository it looks up to your home folder, and outside both it reads no `.ghx`. So a `.ghx` in
+a shared `/tmp`, an unpacked archive or a folder above your repo never picks your account.
+
+On macOS and Linux, ghx also ignores a `.ghx` that another user owns, or that is group- or
+world-writable, because someone else could have written it. `gh ghx which` lists each ignored
+file and why, and other commands warn about it on stderr. If your umask makes new files
+group-writable (`umask 002`), fix the file with `chmod 644 .ghx`.
+
+Set `ghx_file_strict: false` to go back to reading the nearest `.ghx` in any parent folder, up to
+`/`, whoever wrote it.
 
 ### Only your profiles: `profiles_only`
 

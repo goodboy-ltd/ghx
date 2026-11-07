@@ -57,13 +57,6 @@ func mkdirs(t *testing.T, dirs ...string) {
 	}
 }
 
-func writeFile(t *testing.T, path string, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func boolPointer(value bool) *bool { return &value }
 
 func TestWorktreeMatchesMainCheckoutDirs(t *testing.T) {

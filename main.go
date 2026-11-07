@@ -81,6 +81,7 @@ func run(args []string) error {
 	if len(args) > 0 && args[0] == metaCommand {
 		return runMeta(args[1:], match, resolveErr, ghPath, updater)
 	}
+	warnIgnored(match.Ignored)
 	// A refused profile (profiles_only) blocks only commands that need a token, so
 	// gh auth login and gh auth status still run as plain gh and the user can repair the setup.
 	if resolveErr != nil {
@@ -244,24 +245,36 @@ func buildEnv(args []string, match resolve.Match, ghPath string) ([]string, erro
 
 func printWhich(out io.Writer, match resolve.Match, resolveErr error, ghPath string, env []string, policy update.Policy) {
 	var unknown *resolve.UnknownProfileError
-	if errors.As(resolveErr, &unknown) {
-		fmt.Fprintf(out, "profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\ngh:      %s\nupdates: %s\n",
-			unknown.Name, config.AbbreviateHome(unknown.Source), config.AbbreviateHome(ghPath), policy.Describe())
-		return
+	matched := false
+	switch {
+	case errors.As(resolveErr, &unknown):
+		fmt.Fprintf(out, "profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\n",
+			unknown.Name, config.AbbreviateHome(unknown.Source))
+	case !match.Found():
+		fmt.Fprintln(out, "profile: none (plain gh)")
+	default:
+		matched = true
+		source := config.AbbreviateHome(match.Source)
+		if match.WorktreeMain != "" {
+			source += " (via worktree main checkout " + config.AbbreviateHome(match.WorktreeMain) + ")"
+		}
+		fmt.Fprintf(out, "profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\n",
+			match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(), source)
 	}
-	if !match.Found() {
-		fmt.Fprintf(out, "profile: none (plain gh)\ngh:      %s\nupdates: %s\n", config.AbbreviateHome(ghPath), policy.Describe())
-		return
+	for _, ignored := range match.Ignored {
+		fmt.Fprintf(out, "ignored: %s (%s)\n", config.AbbreviateHome(ignored.Path), ignored.Reason)
 	}
-	source := config.AbbreviateHome(match.Source)
-	if match.WorktreeMain != "" {
-		source += " (via worktree main checkout " + config.AbbreviateHome(match.WorktreeMain) + ")"
-	}
-	fmt.Fprintf(out, "profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\nupdates: %s\n",
-		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
-		source, config.AbbreviateHome(ghPath), policy.Describe())
+	fmt.Fprintf(out, "gh:      %s\nupdates: %s\n", config.AbbreviateHome(ghPath), policy.Describe())
 	// buildEnv leaves an inherited token in place, so the profile's own token is never used.
-	if name := proxy.ExplicitTokenVar(env); name != "" {
+	if name := proxy.ExplicitTokenVar(env); matched && name != "" {
 		fmt.Fprintf(out, "token:   overridden by %s (unset it to use the profile's token)\n", name)
+	}
+}
+
+// warnIgnored names each skipped .ghx on stderr, so a file someone else planted, or your own
+// file with loose permissions, never changes or keeps the account silently.
+func warnIgnored(ignored []resolve.IgnoredFile) {
+	for _, file := range ignored {
+		fmt.Fprintf(os.Stderr, "ghx: ignored %s: %s\n", config.AbbreviateHome(file.Path), file.Reason)
 	}
 }

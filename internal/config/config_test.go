@@ -84,6 +84,23 @@ func TestParseProfilesOnly(t *testing.T) {
 	}
 }
 
+func TestStrictRepoFile(t *testing.T) {
+	cases := map[string]bool{
+		"":                       true,
+		"ghx_file_strict: true":  true,
+		"ghx_file_strict: false": false,
+	}
+	for content, want := range cases {
+		cfg, err := Parse([]byte(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.StrictRepoFile(); got != want {
+			t.Fatalf("%q: got %v, want %v", content, got, want)
+		}
+	}
+}
+
 func TestParseSelfUpdateTriState(t *testing.T) {
 	cases := map[string]*bool{"": nil, "self_update: true": ptr(true), "self_update: false": ptr(false)}
 	for content, want := range cases {
