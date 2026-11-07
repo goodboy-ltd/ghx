@@ -28,13 +28,14 @@ ssh_hosts:
 
 func TestParseRejectsInvalid(t *testing.T) {
 	cases := map[string]string{
-		"missing user":             "profiles: {work: {host: x}}",
-		"unknown dir profile":      "profiles: {work: {user: a}}\ndirs: {~/x: nope}",
-		"unknown ssh host profile": "profiles: {work: {user: a}}\nssh_hosts: {gh1: nope}",
-		"unknown default profile":  "profiles: {work: {user: a}}\ndefault: nope",
-		"bad profile git_identity": "profiles: {work: {user: a, git_identity: never}}",
-		"bad global git_identity":  "git_identity: never",
-		"bad yaml":                 "profiles: [",
+		"missing user":               "profiles: {work: {host: x}}",
+		"unknown dir profile":        "profiles: {work: {user: a}}\ndirs: {~/x: nope}",
+		"unknown ssh host profile":   "profiles: {work: {user: a}}\nssh_hosts: {gh1: nope}",
+		"unknown default profile":    "profiles: {work: {user: a}}\ndefault: nope",
+		"bad profile git_identity":   "profiles: {work: {user: a, git_identity: never}}",
+		"bad global git_identity":    "git_identity: never",
+		"bad yaml":                   "profiles: [",
+		"profiles_only, no profiles": "profiles_only: true",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -42,6 +43,17 @@ func TestParseRejectsInvalid(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestParseProfilesOnly(t *testing.T) {
+	cfg, err := Parse([]byte("profiles_only: true\nprofiles: {work: {user: a}}"))
+	if err != nil || !cfg.ProfilesOnly {
+		t.Fatalf("got %+v, %v", cfg, err)
+	}
+	cfg, err = Parse([]byte("profiles: {work: {user: a}}"))
+	if err != nil || cfg.ProfilesOnly {
+		t.Fatalf("profiles_only should default to false: got %+v, %v", cfg, err)
 	}
 }
 

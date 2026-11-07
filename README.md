@@ -86,6 +86,7 @@ Full example: [examples/config.yaml](examples/config.yaml).
 | `ssh_hosts` | ssh host alias in the `origin` remote URL -> profile. See below |
 | `remote_user` | `true` uses the username in an https `origin` remote URL. See below |
 | `default` | profile for folders outside every `dirs` entry. Default: plain gh |
+| `profiles_only` | `true` refuses a `GHX_PROFILE` or `.ghx` name that is not a profile. See below |
 | `manage_gh` | `true` makes ghx download gh and keep it updated. Default: use gh from `PATH` |
 | `disable_updates` | `true` stops the daily ghx update check |
 
@@ -100,6 +101,25 @@ echo .ghx >> .git/info/exclude   # or add it to .gitignore
 ```
 
 ghx uses the nearest `.ghx` in the current folder or any parent folder.
+
+### Only your profiles: `profiles_only`
+
+By default a `GHX_PROFILE` value or a `.ghx` name with no matching profile is used as a gh
+login, so a typo or a `.ghx` committed to a repo you cloned can pick any account you are logged
+into. Set `profiles_only` to allow only the profiles in your config:
+
+```yaml
+profiles_only: true
+```
+
+- A `GHX_PROFILE` or `.ghx` name that is not a profile is an error, and `gh ghx which` shows
+  where the name came from. ghx does not fall back to another rule, because that would run gh
+  as an account other than the one asked for.
+- With `remote_user`, a login in the remote URL that matches no profile is skipped, and
+  resolution goes on to `dirs` and `default`.
+- `gh auth` commands that need no token (`gh auth login`, `gh auth status`, ...) still run as
+  plain gh, so you can fix your setup. `gh auth git-credential` is refused like any other
+  command.
 
 ### SSH host aliases: `ssh_hosts`
 
