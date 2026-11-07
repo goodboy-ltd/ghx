@@ -1,0 +1,37 @@
+# Dependabot version updates for this fork.
+# Reference: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+#
+# Each ecosystem gets one grouped PR a week for minor and patch updates.
+# Major updates match no group, so each one arrives as its own PR.
+# The 7-day cooldown keeps Dependabot from proposing a release in its first week.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    target-branch: master
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      gomod-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies]
+    commit-message:
+      prefix: chore(deps)
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: master
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies, github-actions]
+    commit-message:
+      prefix: chore(deps)
