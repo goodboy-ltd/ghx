@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,8 +19,14 @@ const (
 	maxAssetBytes  = 200 << 20
 )
 
+// ErrTooLarge is returned when a download is bigger than the client's size limit, so the cap
+// never surfaces as a truncated body and a misleading checksum mismatch.
+var ErrTooLarge = errors.New("download too large")
+
 type Client struct {
 	http *http.Client
+	// maxBytes caps every download. Zero means maxAssetBytes.
+	maxBytes int64
 }
 
 func NewClient() Client {
@@ -85,5 +92,25 @@ func (client Client) get(url string) ([]byte, error) {
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: status %d", url, response.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(response.Body, maxAssetBytes))
+	limit := client.limit()
+	tooLarge := fmt.Errorf("GET %s: %w: over the %d-byte limit", url, ErrTooLarge, limit)
+	if response.ContentLength > limit {
+		return nil, tooLarge
+	}
+	// Read one byte past the limit: a body without a Content-Length that reaches it is too large.
+	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("GET %s: %w", url, err)
+	}
+	if int64(len(body)) > limit {
+		return nil, tooLarge
+	}
+	return body, nil
+}
+
+func (client Client) limit() int64 {
+	if client.maxBytes > 0 {
+		return client.maxBytes
+	}
+	return maxAssetBytes
 }

@@ -20,9 +20,14 @@ ssh_hosts:
   gh-work: work
   gh-personal: personal
 
+# A linked git worktree outside every dirs folder matches through its main checkout. Default: true.
+# dirs_follow_worktrees: false
+
 # remote_user: true
 # profiles_only: true
 # ghx_file_strict: false
 # default: personal
 # manage_gh: true
 # disable_updates: true
+# self_update: false
+# update_repo: barnuri/ghx

@@ -1,5 +1,69 @@
 # ghx
 
+<!-- FORK:BEGIN. Fork-only text lives between these markers, so merges from upstream leave it alone. -->
+
+## This fork
+
+This is [goodboy-ltd/ghx](https://github.com/goodboy-ltd/ghx), a fork of
+[barnuri/ghx](https://github.com/barnuri/ghx). It tracks upstream's `master`, adds release and
+security hardening, and offers each change that suits upstream back to barnuri/ghx as a pull
+request. [FORK.md](FORK.md) lists what differs, the upstream pull requests and the skipped
+versions. The license is upstream's MIT license, with its copyright notice kept in
+[LICENSE](LICENSE).
+
+The rest of this README is upstream's, so its install lines and links point at barnuri/ghx.
+To install this fork's builds:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/goodboy-ltd/ghx/master/install.sh | sh
+```
+
+```powershell
+irm https://raw.githubusercontent.com/goodboy-ltd/ghx/master/install.ps1 | iex
+```
+
+Both installers download from `goodboy-ltd/ghx` and print the version and repository before
+they download anything. Two variables change that, and both are checked first:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GHX_VERSION` | latest release | Install exactly this release, such as `0.2.0` or `v0.2.0` |
+| `GHX_REPO` | `goodboy-ltd/ghx` | Install from another `owner/name`, such as `barnuri/ghx` for upstream's builds |
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/goodboy-ltd/ghx/master/install.sh | GHX_VERSION=0.2.0 sh
+```
+
+With Homebrew or asdf, from the first fork release (`v0.2.0`) on:
+
+```sh
+brew install goodboy-ltd/tap/ghx
+asdf plugin add ghx https://github.com/goodboy-ltd/asdf-ghx.git && asdf install ghx latest
+```
+
+Fork releases are built with self-update off, so an installed `ghx` stays at its version until
+you rerun the installer, `brew upgrade goodboy-ltd/tap/ghx` or `asdf install ghx latest`.
+
+`go install github.com/goodboy-ltd/ghx@latest` does not work. The fork keeps upstream's module
+path, `module github.com/barnuri/ghx` in `go.mod`, so that upstream merges stay clean, and Go
+refuses a module fetched under a path other than the one it declares
+([go.mod `module` directive](https://go.dev/ref/mod#go-mod-file-module)):
+
+```text
+module declares its path as: github.com/barnuri/ghx
+        but was required as: github.com/goodboy-ltd/ghx
+```
+
+`go install github.com/barnuri/ghx@latest` installs upstream, not this fork. To build the fork
+with Go, build from a clone. A local build reports version `dev` and never updates itself:
+
+```sh
+git clone https://github.com/goodboy-ltd/ghx.git && cd ghx
+go build -o ~/.local/bin/ghx .
+```
+
+<!-- FORK:END -->
+
 Use the right GitHub account in every folder. `ghx` is a thin wrapper around the official
 [`gh`](https://cli.github.com) CLI. It picks a gh account from the directory you are in, then
 runs the real `gh` with your arguments unchanged.
@@ -83,6 +147,7 @@ Full example: [examples/config.yaml](examples/config.yaml).
 | `profiles.<name>.git_identity` | `once` or `always`. See below |
 | `name` / `email` / `git_identity` | Fallback for each profile that does not set the key |
 | `dirs` | folder -> profile. The deepest matching folder wins |
+| `dirs_follow_worktrees` | `false` stops a linked git worktree from matching `dirs` through its main checkout. Default: `true`. See below |
 | `ssh_hosts` | ssh host alias in the `origin` remote URL -> profile. See below |
 | `remote_user` | `true` uses the username in an https `origin` remote URL. See below |
 | `default` | profile for folders outside every `dirs` entry. Default: plain gh |
@@ -90,6 +155,26 @@ Full example: [examples/config.yaml](examples/config.yaml).
 | `ghx_file_strict` | `false` reads a `.ghx` in any parent folder, from anyone. Default: `true`. See below |
 | `manage_gh` | `true` makes ghx download gh and keep it updated. Default: use gh from `PATH` |
 | `disable_updates` | `true` stops the daily ghx update check |
+| `self_update` | `true` or `false` turns ghx's self-update on or off. Default: the build's setting (on for these releases) |
+| `update_repo` | `owner/repo` whose latest release ghx updates itself from. Default: the build's setting (`barnuri/ghx`) |
+
+### Git worktrees: `dirs_follow_worktrees`
+
+A linked worktree created outside the main checkout (`git worktree add ../repo-feature`) is not
+inside any `dirs` folder. When no `dirs` entry contains the current folder, ghx checks whether it
+is in a linked worktree and, if so, matches `dirs` against the worktree's main checkout instead.
+A `dirs` entry that contains the current folder itself still wins.
+
+ghx finds the main checkout by reading files, without running git: the worktree's `.git` file
+names `<main>/.git/worktrees/<name>`, and that folder's `gitdir` file must point back at the
+worktree. Submodules and `--separate-git-dir` repos are not followed. `gh ghx which` shows the
+match as `source: <dirs folder> (via worktree main checkout <main>)`.
+
+To turn it off:
+
+```yaml
+dirs_follow_worktrees: false
+```
 
 ### Per-repo file: `.ghx`
 
@@ -200,7 +285,8 @@ With no matched profile, ghx does not change git config.
 2. Nearest `.ghx` file
 3. `ssh_hosts` entry for the `origin` remote's host
 4. Username in the `origin` remote URL, when `remote_user` is `true`
-5. Deepest matching `dirs` entry
+5. Deepest matching `dirs` entry, then, in a linked git worktree, the deepest `dirs` entry that
+   matches its main checkout
 6. `default`
 7. No match: plain gh, with your active gh account
 
@@ -209,7 +295,7 @@ With no matched profile, ghx does not change git config.
 ghx adds one command group, `gh ghx`. Everything else goes to gh.
 
 ```text
-gh ghx which     Show the profile, gh user and gh binary for the current folder
+gh ghx which     Show the profile, gh user, gh binary and update source for the current folder
 gh ghx current   Print only the profile name (empty when none), for prompts and status lines
 gh ghx update    Update ghx now (and gh when manage_gh is true)
 gh ghx version   Show the ghx version
@@ -223,7 +309,8 @@ so terminals in different folders do not change each other's account.
 
 - `gh auth ...` commands run without the token, so `gh auth login` and `gh auth status` work as
   usual. `gh auth git-credential` gets the token, so git pushes as the folder's account.
-- A `GH_TOKEN` you set yourself wins over ghx.
+- A `GH_TOKEN` (or `GH_ENTERPRISE_TOKEN`) you set yourself wins over ghx, and `gh ghx which`
+  says so with a `token:` line.
 - Exit codes, stdin, stdout and the TTY belong to gh. On macOS and Linux ghx replaces itself
   with gh (`exec`).
 
@@ -246,6 +333,15 @@ sha256 and replaces the binary. With `manage_gh: true` it does the same for gh f
 [cli/cli releases](https://github.com/cli/cli/releases). The result goes to `update.log` in the
 ghx cache dir (`~/Library/Caches/ghx`, `~/.cache/ghx` or `%LOCALAPPDATA%\ghx`).
 Set `GHX_NO_UPDATE=1` or `disable_updates: true` to turn it off.
+
+ghx only moves to a newer version, never to a lower one. `self_update: false` stops ghx replacing
+itself, and `update_repo` changes where it looks. A ghx installed by Homebrew or asdf never
+replaces itself: `gh ghx update` tells you to run `brew upgrade ghx` or `asdf install ghx latest`.
+`gh ghx which` shows the result on its `updates:` line: `on from <repo>`, `off (build default)`,
+`off (self_update: false)` or `managed by <package manager>`.
+
+Builds can change the defaults with `-ldflags`: `-X main.updateRepo=<owner/repo>`,
+`-X main.selfUpdate=off`, and `-X main.packageManager=homebrew` (or `asdf`).
 
 ## Development
 

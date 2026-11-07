@@ -10,27 +10,43 @@ import (
 )
 
 const (
-	ghxRepo          = "barnuri/ghx"
 	ghxChecksumsName = "checksums.txt"
 	devVersion       = "dev"
 )
 
-type SelfUpdater struct {
-	Client         release.Client
-	CurrentVersion string
+// ReleaseClient is the part of release.Client the self-updater uses, so tests can fake it.
+type ReleaseClient interface {
+	Latest(repo string) (release.Release, error)
+	DownloadVerified(asset release.Asset, checksums release.Asset) ([]byte, error)
 }
 
-// Update replaces the running ghx binary with the latest release. It returns the new version,
-// or "" when ghx is already current or is a local dev build.
+type SelfUpdater struct {
+	Client         ReleaseClient
+	CurrentVersion string
+	Policy         Policy
+}
+
+// Update replaces the running ghx binary with the latest release of Policy.Repo when that
+// release is newer. It returns the new version, or "" when ghx is current, ahead of the latest
+// release, or a local dev build. An unparsable version on either side is an error, never an
+// update. It touches neither the network nor the binary when a package manager owns the
+// install, or when self-update is off (ErrSelfUpdateDisabled).
 func (updater SelfUpdater) Update() (string, error) {
+	if err := updater.Policy.refusal(); err != nil {
+		return "", err
+	}
 	if updater.CurrentVersion == devVersion {
 		return "", nil
 	}
-	latest, err := updater.Client.Latest(ghxRepo)
+	latest, err := updater.Client.Latest(updater.Policy.Repo)
 	if err != nil {
 		return "", err
 	}
-	if latest.Version() == updater.CurrentVersion {
+	order, err := compareVersions(latest.Version(), updater.CurrentVersion)
+	if err != nil {
+		return "", fmt.Errorf("compare release %s with ghx %s: %w", latest.TagName, updater.CurrentVersion, err)
+	}
+	if order <= 0 {
 		return "", nil
 	}
 	asset, found := latest.Find(ghxAssetName())

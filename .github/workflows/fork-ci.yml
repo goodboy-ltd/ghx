@@ -1,0 +1,152 @@
+name: fork-ci
+
+on:
+  pull_request:
+  push:
+    branches: [master, 'release/**']
+  workflow_call:
+
+permissions:
+  contents: read
+
+# One run per PR (or per ref for pushes). A new push to a PR cancels its
+# previous run; pushes to master and release/** are never cancelled.
+concurrency:
+  group: fork-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Decides whether Go code, the installers or workflows changed. The test jobs
+  # always run, so every required check reports; on a docs-only PR their steps
+  # are skipped.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      install: ${{ steps.filter.outputs.install }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: filter
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "install=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # HEAD is the PR's merge commit; its first parent is the base tip.
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          printf '%s\n' "$changed"
+          if grep -qE '(\.go$|^go\.(mod|sum)$|^\.github/workflows/)' <<<"$changed"; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -qE '(^install\.(sh|ps1)$|^scripts/|^\.github/workflows/)' <<<"$changed"; then
+            echo "install=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "install=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: changes
+    # Runs even if `changes` failed: an empty output means "run everything".
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      RUN: ${{ needs.changes.outputs.go != 'false' }}
+    steps:
+      - if: env.RUN != 'true'
+        run: echo "No Go or workflow files changed; nothing to test."
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: gofmt -l
+        if: env.RUN == 'true'
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt -l lists unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - if: env.RUN == 'true'
+        run: go vet ./...
+      - if: env.RUN == 'true'
+        run: go test -race ./...
+
+  # Runs install.sh against local fixture releases: no network, no token, and
+  # writes only under $RUNNER_TEMP.
+  install-test:
+    needs: changes
+    # Runs even if `changes` failed: an empty output means "run everything".
+    if: ${{ !cancelled() && needs.changes.outputs.install != 'false' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sh scripts/test-install.sh
+
+  # Not a required check and never a release gate: Windows is best effort.
+  test-windows:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - run: go vet ./...
+      - run: go test ./...
+
+  # PRs are squash-merged, so the title becomes the commit subject.
+  pr-title:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert

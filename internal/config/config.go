@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -11,6 +13,8 @@ import (
 type Config struct {
 	ManageGh       bool               `yaml:"manage_gh"`
 	DisableUpdates bool               `yaml:"disable_updates"`
+	SelfUpdate     *bool              `yaml:"self_update"`
+	UpdateRepo     string             `yaml:"update_repo"`
 	Default        string             `yaml:"default"`
 	Profiles       map[string]Profile `yaml:"profiles"`
 	Dirs           map[string]string  `yaml:"dirs"`
@@ -21,6 +25,13 @@ type Config struct {
 	Name           string             `yaml:"name"`
 	Email          string             `yaml:"email"`
 	GitIdentity    string             `yaml:"git_identity"`
+	// DirsFollowWorktrees is nil when the key is absent, which means on.
+	DirsFollowWorktrees *bool `yaml:"dirs_follow_worktrees"`
+}
+
+// FollowsWorktrees reports whether a linked git worktree matches dirs through its main checkout.
+func (cfg Config) FollowsWorktrees() bool {
+	return cfg.DirsFollowWorktrees == nil || *cfg.DirsFollowWorktrees
 }
 
 // Load returns an empty Config when the file does not exist, so ghx acts as plain gh.
@@ -80,5 +91,20 @@ func (cfg Config) validate() error {
 	if _, ok := cfg.Profiles[cfg.Default]; cfg.Default != "" && !ok {
 		return fmt.Errorf("default: unknown profile %q", cfg.Default)
 	}
+	if cfg.UpdateRepo != "" && !ValidUpdateRepo(cfg.UpdateRepo) {
+		return fmt.Errorf("update_repo must be owner/repo, got %q", cfg.UpdateRepo)
+	}
 	return nil
+}
+
+var updateRepoPattern = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
+
+// ValidUpdateRepo reports whether repo is a GitHub owner/repo. The value is joined into an API
+// URL, so "." and ".." are refused as the repo name.
+func ValidUpdateRepo(repo string) bool {
+	if !updateRepoPattern.MatchString(repo) {
+		return false
+	}
+	_, name, _ := strings.Cut(repo, "/")
+	return name != "." && name != ".."
 }
