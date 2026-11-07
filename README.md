@@ -1,5 +1,69 @@
 # ghx
 
+<!-- FORK:BEGIN. Fork-only text lives between these markers, so merges from upstream leave it alone. -->
+
+## This fork
+
+This is [goodboy-ltd/ghx](https://github.com/goodboy-ltd/ghx), a fork of
+[barnuri/ghx](https://github.com/barnuri/ghx). It tracks upstream's `master`, adds release and
+security hardening, and offers each change that suits upstream back to barnuri/ghx as a pull
+request. [FORK.md](FORK.md) lists what differs, the upstream pull requests and the skipped
+versions. The license is upstream's MIT license, with its copyright notice kept in
+[LICENSE](LICENSE).
+
+The rest of this README is upstream's, so its install lines and links point at barnuri/ghx.
+To install this fork's builds:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/goodboy-ltd/ghx/master/install.sh | sh
+```
+
+```powershell
+irm https://raw.githubusercontent.com/goodboy-ltd/ghx/master/install.ps1 | iex
+```
+
+Both installers download from `goodboy-ltd/ghx` and print the version and repository before
+they download anything. Two variables change that, and both are checked first:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GHX_VERSION` | latest release | Install exactly this release, such as `0.2.0` or `v0.2.0` |
+| `GHX_REPO` | `goodboy-ltd/ghx` | Install from another `owner/name`, such as `barnuri/ghx` for upstream's builds |
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/goodboy-ltd/ghx/master/install.sh | GHX_VERSION=0.2.0 sh
+```
+
+With Homebrew or asdf, from the first fork release (`v0.2.0`) on:
+
+```sh
+brew install goodboy-ltd/tap/ghx
+asdf plugin add ghx https://github.com/goodboy-ltd/asdf-ghx.git && asdf install ghx latest
+```
+
+Fork releases are built with self-update off, so an installed `ghx` stays at its version until
+you rerun the installer, `brew upgrade goodboy-ltd/tap/ghx` or `asdf install ghx latest`.
+
+`go install github.com/goodboy-ltd/ghx@latest` does not work. The fork keeps upstream's module
+path, `module github.com/barnuri/ghx` in `go.mod`, so that upstream merges stay clean, and Go
+refuses a module fetched under a path other than the one it declares
+([go.mod `module` directive](https://go.dev/ref/mod#go-mod-file-module)):
+
+```text
+module declares its path as: github.com/barnuri/ghx
+        but was required as: github.com/goodboy-ltd/ghx
+```
+
+`go install github.com/barnuri/ghx@latest` installs upstream, not this fork. To build the fork
+with Go, build from a clone. A local build reports version `dev` and never updates itself:
+
+```sh
+git clone https://github.com/goodboy-ltd/ghx.git && cd ghx
+go build -o ~/.local/bin/ghx .
+```
+
+<!-- FORK:END -->
+
 Use the right GitHub account in every folder. `ghx` is a thin wrapper around the official
 [`gh`](https://cli.github.com) CLI. It picks a gh account from the directory you are in, then
 runs the real `gh` with your arguments unchanged.

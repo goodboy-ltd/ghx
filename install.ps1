@@ -1,8 +1,23 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$repo = 'barnuri/ghx'
-$baseUrl = "https://github.com/$repo/releases/latest/download"
+$repo = if ($env:GHX_REPO) { $env:GHX_REPO } else { 'goodboy-ltd/ghx' }
+$version = $env:GHX_VERSION
+# -cmatch: case-sensitive ASCII classes. \z, because $ also matches before a final newline.
+if ($repo -cnotmatch '\A[A-Za-z0-9-]+/[A-Za-z0-9._-]+\z' -or $repo -cmatch '/\.{1,2}\z') {
+    throw "ghx install: GHX_REPO must be owner/name, got '$repo'"
+}
+if ($version) {
+    if ($version -cnotmatch '\Av?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?\z') {
+        throw "ghx install: GHX_VERSION must be a version like 0.2.0 or v0.2.0, got '$version'"
+    }
+    $tag = 'v' + ($version -replace '\Av', '')
+    $baseUrl = "https://github.com/$repo/releases/download/$tag"
+}
+else {
+    $tag = 'latest'
+    $baseUrl = "https://github.com/$repo/releases/latest/download"
+}
 $installDir = if ($env:GHX_INSTALL_DIR) { $env:GHX_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA 'Programs\ghx' }
 $shim = $env:GHX_SHIM -ne '0'
 
@@ -16,7 +31,8 @@ $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ghx-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
-    Write-Host "Downloading $asset..."
+    Write-Host "Installing ghx $tag from $repo"
+    Write-Host "Downloading $asset from $baseUrl..."
     Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/$asset" -OutFile "$tmp\ghx.exe"
     Invoke-WebRequest -UseBasicParsing -Uri "$baseUrl/checksums.txt" -OutFile "$tmp\checksums.txt"
     $line = Get-Content "$tmp\checksums.txt" | Where-Object { ($_ -split '\s+')[1] -eq $asset }
