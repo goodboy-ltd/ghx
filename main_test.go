@@ -145,3 +145,26 @@ func TestPrintWhichShowsRefusedProfileSource(t *testing.T) {
 		t.Fatalf("unexpected token line in %q", got)
 	}
 }
+
+func TestPrintWhichShowsUpdatePolicy(t *testing.T) {
+	matched := resolve.Match{ProfileName: "work", Profile: config.Profile{User: "octocat"}, Source: "/tmp/.ghx"}
+	refused := &resolve.UnknownProfileError{Name: "stranger", Source: "/repo/.ghx"}
+	policy := update.Policy{Repo: "goodboy-ltd/ghx", Reason: "build default"}
+	cases := map[string]struct {
+		match      resolve.Match
+		resolveErr error
+	}{
+		"profile":    {matched, nil},
+		"no profile": {resolve.Match{}, nil},
+		"refused":    {resolve.Match{}, refused},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			printWhich(&out, tc.match, tc.resolveErr, "/usr/bin/gh", nil, policy)
+			if got := out.String(); !strings.Contains(got, "\nupdates: off (build default)\n") {
+				t.Fatalf("output %q lacks the updates line", got)
+			}
+		})
+	}
+}
