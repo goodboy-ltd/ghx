@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/barnuri/ghx/internal/config"
@@ -93,7 +94,7 @@ func runMeta(args []string, match resolve.Match, resolveErr error, ghPath string
 	}
 	switch command {
 	case "which":
-		printWhich(match, resolveErr, ghPath)
+		printWhich(os.Stdout, match, resolveErr, ghPath, os.Environ())
 	case "current":
 		if resolveErr != nil {
 			return resolveErr
@@ -170,18 +171,22 @@ func buildEnv(args []string, match resolve.Match, ghPath string) ([]string, erro
 	return proxy.WithProfile(env, match.Profile, token), nil
 }
 
-func printWhich(match resolve.Match, resolveErr error, ghPath string) {
+func printWhich(out io.Writer, match resolve.Match, resolveErr error, ghPath string, env []string) {
 	var unknown *resolve.UnknownProfileError
 	if errors.As(resolveErr, &unknown) {
-		fmt.Printf("profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\ngh:      %s\n",
+		fmt.Fprintf(out, "profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\ngh:      %s\n",
 			unknown.Name, config.AbbreviateHome(unknown.Source), config.AbbreviateHome(ghPath))
 		return
 	}
 	if !match.Found() {
-		fmt.Printf("profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
+		fmt.Fprintf(out, "profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
 		return
 	}
-	fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\n",
+	fmt.Fprintf(out, "profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\n",
 		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
 		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath))
+	// buildEnv leaves an inherited token in place, so the profile's own token is never used.
+	if name := proxy.ExplicitTokenVar(env); name != "" {
+		fmt.Fprintf(out, "token:   overridden by %s (unset it to use the profile's token)\n", name)
+	}
 }

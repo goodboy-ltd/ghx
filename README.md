@@ -211,7 +211,8 @@ so terminals in different folders do not change each other's account.
 
 - `gh auth ...` commands run without the token, so `gh auth login` and `gh auth status` work as
   usual. `gh auth git-credential` gets the token, so git pushes as the folder's account.
-- A `GH_TOKEN` you set yourself wins over ghx.
+- A `GH_TOKEN` (or `GH_ENTERPRISE_TOKEN`) you set yourself wins over ghx, and `gh ghx which`
+  says so with a `token:` line.
 - Exit codes, stdin, stdout and the TTY belong to gh. On macOS and Linux ghx replaces itself
   with gh (`exec`).
 
