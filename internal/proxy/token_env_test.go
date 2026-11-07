@@ -47,3 +47,24 @@ func TestHasExplicitToken(t *testing.T) {
 		t.Fatal("unexpected explicit token detection")
 	}
 }
+
+func TestExplicitTokenVar(t *testing.T) {
+	cases := map[string]struct {
+		env  []string
+		want string
+	}{
+		"none":              {[]string{"PATH=/bin"}, ""},
+		"empty GH_TOKEN":    {[]string{"GH_TOKEN="}, ""},
+		"GH_TOKEN":          {[]string{"GH_TOKEN=x"}, "GH_TOKEN"},
+		"enterprise":        {[]string{"GH_ENTERPRISE_TOKEN=x"}, "GH_ENTERPRISE_TOKEN"},
+		"both":              {[]string{"GH_ENTERPRISE_TOKEN=x", "GH_TOKEN=y"}, "GH_TOKEN"},
+		"GITHUB_TOKEN only": {[]string{"GITHUB_TOKEN=x"}, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := ExplicitTokenVar(tc.env); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
