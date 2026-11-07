@@ -38,3 +38,18 @@ func TestPrintWhichReportsTokenOverride(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintWhichShowsRefusedProfileSource(t *testing.T) {
+	refused := &resolve.UnknownProfileError{Name: "stranger", Source: "/repo/.ghx"}
+	var out bytes.Buffer
+	printWhich(&out, resolve.Match{}, refused, "/usr/bin/gh", []string{"GH_TOKEN=x"})
+	got := out.String()
+	for _, want := range []string{"profile: stranger (refused: not a profile, profiles_only: true)\n", "source:  /repo/.ghx\n"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output %q lacks %q", got, want)
+		}
+	}
+	if strings.Contains(got, "token:") {
+		t.Fatalf("unexpected token line in %q", got)
+	}
+}
