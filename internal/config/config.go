@@ -17,6 +17,7 @@ type Config struct {
 	SSHHosts       map[string]string  `yaml:"ssh_hosts"`
 	RemoteUser     bool               `yaml:"remote_user"`
 	ProfilesOnly   bool               `yaml:"profiles_only"`
+	GhxFileStrict  *bool              `yaml:"ghx_file_strict"`
 	Name           string             `yaml:"name"`
 	Email          string             `yaml:"email"`
 	GitIdentity    string             `yaml:"git_identity"`
@@ -43,6 +44,12 @@ func Parse(content []byte) (Config, error) {
 		return Config{}, err
 	}
 	return parsed, nil
+}
+
+// StrictRepoFile reports ghx_file_strict, which defaults to true: the .ghx walk stops at the
+// repository's top folder (or home), and on Unix skips files someone else could have written.
+func (cfg Config) StrictRepoFile() bool {
+	return cfg.GhxFileStrict == nil || *cfg.GhxFileStrict
 }
 
 func (cfg Config) validate() error {

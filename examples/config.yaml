@@ -22,6 +22,7 @@ ssh_hosts:
 
 # remote_user: true
 # profiles_only: true
+# ghx_file_strict: false
 # default: personal
 # manage_gh: true
 # disable_updates: true

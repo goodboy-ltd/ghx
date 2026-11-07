@@ -23,7 +23,8 @@ func mustProfile(t *testing.T, cfg config.Config, cwd string, override string, r
 func newTree(t *testing.T) (string, config.Config) {
 	t.Helper()
 	root := t.TempDir()
-	for _, dir := range []string{"work/api/src", "workshop", "personal/blog", "work/oss"} {
+	// root/.git makes the tree one repository, so a .ghx anywhere in it is in scope.
+	for _, dir := range []string{"work/api/src", "workshop", "personal/blog", "work/oss", gitEntry} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}

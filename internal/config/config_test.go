@@ -57,6 +57,23 @@ func TestParseProfilesOnly(t *testing.T) {
 	}
 }
 
+func TestStrictRepoFile(t *testing.T) {
+	cases := map[string]bool{
+		"":                       true,
+		"ghx_file_strict: true":  true,
+		"ghx_file_strict: false": false,
+	}
+	for content, want := range cases {
+		cfg, err := Parse([]byte(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.StrictRepoFile(); got != want {
+			t.Fatalf("%q: got %v, want %v", content, got, want)
+		}
+	}
+}
+
 func TestIdentityForFallsBackToTopLevel(t *testing.T) {
 	cfg, err := Parse([]byte(`
 name: Global Name

@@ -1,10 +1,7 @@
 package resolve
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -27,8 +24,15 @@ func Profile(cfg config.Config, cwd string, override string, remoteURL RemoteURL
 		return requested(cfg, override, overrideSource)
 	}
 	current := canonical(cwd)
-	if name, file := nearestRepoFile(current); name != "" {
-		return requested(cfg, name, file)
+	found := nearestRepoFile(current, cfg.StrictRepoFile())
+	match, err := fromRules(cfg, current, found, remoteURL)
+	match.Ignored = found.ignored
+	return match, err
+}
+
+func fromRules(cfg config.Config, current string, found repoFile, remoteURL RemoteURL) (Match, error) {
+	if found.name != "" {
+		return requested(cfg, found.name, found.path)
 	}
 	if match := fromOrigin(cfg, current, remoteURL); match.Found() {
 		return match, nil
@@ -134,33 +138,6 @@ func deepestDir(cfg config.Config, current string) Match {
 		bestLength = len(base)
 	}
 	return best
-}
-
-func nearestRepoFile(start string) (string, string) {
-	for dir := start; ; dir = filepath.Dir(dir) {
-		file := filepath.Join(dir, RepoFileName)
-		if name := readRepoFile(file); name != "" {
-			return name, file
-		}
-		if filepath.Dir(dir) == dir {
-			return "", ""
-		}
-	}
-}
-
-func readRepoFile(file string) string {
-	content, err := os.ReadFile(file)
-	if err != nil {
-		return ""
-	}
-	scanner := bufio.NewScanner(bytes.NewReader(content))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" && !strings.HasPrefix(line, "#") {
-			return line
-		}
-	}
-	return ""
 }
 
 func canonical(path string) string {

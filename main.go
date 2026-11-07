@@ -66,6 +66,7 @@ func run(args []string) error {
 	if len(args) > 0 && args[0] == metaCommand {
 		return runMeta(args[1:], match, resolveErr, ghPath, updater)
 	}
+	warnIgnored(match.Ignored)
 	// A refused profile (profiles_only) blocks only commands that need a token, so
 	// gh auth login and gh auth status still run as plain gh and the user can repair the setup.
 	if resolveErr != nil {
@@ -172,16 +173,27 @@ func buildEnv(args []string, match resolve.Match, ghPath string) ([]string, erro
 
 func printWhich(match resolve.Match, resolveErr error, ghPath string) {
 	var unknown *resolve.UnknownProfileError
-	if errors.As(resolveErr, &unknown) {
-		fmt.Printf("profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\ngh:      %s\n",
-			unknown.Name, config.AbbreviateHome(unknown.Source), config.AbbreviateHome(ghPath))
-		return
+	switch {
+	case errors.As(resolveErr, &unknown):
+		fmt.Printf("profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\n",
+			unknown.Name, config.AbbreviateHome(unknown.Source))
+	case !match.Found():
+		fmt.Println("profile: none (plain gh)")
+	default:
+		fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\n",
+			match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
+			config.AbbreviateHome(match.Source))
 	}
-	if !match.Found() {
-		fmt.Printf("profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
-		return
+	for _, ignored := range match.Ignored {
+		fmt.Printf("ignored: %s (%s)\n", config.AbbreviateHome(ignored.Path), ignored.Reason)
 	}
-	fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\n",
-		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
-		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath))
+	fmt.Printf("gh:      %s\n", config.AbbreviateHome(ghPath))
+}
+
+// warnIgnored names each skipped .ghx on stderr, so a file someone else planted, or your own
+// file with loose permissions, never changes or keeps the account silently.
+func warnIgnored(ignored []resolve.IgnoredFile) {
+	for _, file := range ignored {
+		fmt.Fprintf(os.Stderr, "ghx: ignored %s: %s\n", config.AbbreviateHome(file.Path), file.Reason)
+	}
 }
