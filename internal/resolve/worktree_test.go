@@ -170,7 +170,7 @@ func TestWorktreeMatchesMainCheckoutDirs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			layout := newWorktreeLayout(t)
 			cfg := tc.setup(t, layout)
-			got := Profile(cfg, filepath.Join(layout.worktree, "sub"), "", noRemote)
+			got := mustProfile(t, cfg, filepath.Join(layout.worktree, "sub"), "", noRemote)
 			if got.ProfileName != tc.want {
 				t.Fatalf("got %+v, want profile %q", got, tc.want)
 			}
@@ -198,7 +198,7 @@ func TestWorktreeMainReachedThroughSymlinkMatchesCanonicalKey(t *testing.T) {
 	layout.link(t, "gitdir: "+viaLink+"\n", filepath.Join(layout.worktree, ".git")+"\n")
 	cfg := layout.config(nil)
 	cfg.Dirs = map[string]string{canonical(layout.main): "work"}
-	got := Profile(cfg, layout.worktree, "", noRemote)
+	got := mustProfile(t, cfg, layout.worktree, "", noRemote)
 	if got.ProfileName != "work" || got.WorktreeMain != canonical(layout.main) {
 		t.Fatalf("unexpected match %+v", got)
 	}
@@ -207,7 +207,7 @@ func TestWorktreeMainReachedThroughSymlinkMatchesCanonicalKey(t *testing.T) {
 func TestMainCheckoutHasNoWorktreeSource(t *testing.T) {
 	layout := newWorktreeLayout(t)
 	layout.link(t, "gitdir: "+layout.gitDir()+"\n", filepath.Join(layout.worktree, ".git")+"\n")
-	got := Profile(layout.config(nil), layout.main, "", noRemote)
+	got := mustProfile(t, layout.config(nil), layout.main, "", noRemote)
 	if got.ProfileName != "work" || got.WorktreeMain != "" {
 		t.Fatalf("unexpected match %+v", got)
 	}
@@ -217,7 +217,7 @@ func TestRepoFileBeatsWorktreeDirs(t *testing.T) {
 	layout := newWorktreeLayout(t)
 	layout.link(t, "gitdir: "+layout.gitDir()+"\n", filepath.Join(layout.worktree, ".git")+"\n")
 	writeFile(t, filepath.Join(layout.worktree, RepoFileName), "personal\n")
-	if got := Profile(layout.config(nil), filepath.Join(layout.worktree, "sub"), "", noRemote); got.ProfileName != "personal" {
+	if got := mustProfile(t, layout.config(nil), filepath.Join(layout.worktree, "sub"), "", noRemote); got.ProfileName != "personal" {
 		t.Fatalf("got %+v, want personal", got)
 	}
 }

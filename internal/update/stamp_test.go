@@ -3,6 +3,7 @@ package update
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -24,6 +25,50 @@ func TestStamp(t *testing.T) {
 	}
 	if !IsDue(stateDir) {
 		t.Fatal("expected due after the interval")
+	}
+}
+
+func TestStampAndLogArePrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits")
+	}
+	writers := map[string]func(stateDir string) error{
+		stampName: MarkChecked,
+		logName:   func(stateDir string) error { WriteLog(stateDir, "update failed"); return nil },
+	}
+	for name, write := range writers {
+		t.Run(name+" new", func(t *testing.T) {
+			stateDir := filepath.Join(t.TempDir(), "ghx")
+			if err := write(stateDir); err != nil {
+				t.Fatal(err)
+			}
+			assertMode(t, filepath.Join(stateDir, name), 0o600)
+		})
+		t.Run(name+" existing", func(t *testing.T) {
+			stateDir := t.TempDir()
+			path := filepath.Join(stateDir, name)
+			if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := write(stateDir); err != nil {
+				t.Fatal(err)
+			}
+			assertMode(t, path, 0o600)
+		})
+	}
+}
+
+func assertMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("%s has mode %o, want %o", filepath.Base(path), got, want)
 	}
 }
 
