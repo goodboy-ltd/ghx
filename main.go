@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/barnuri/ghx/internal/config"
 	"github.com/barnuri/ghx/internal/ghbin"
@@ -14,7 +15,16 @@ import (
 	"github.com/barnuri/ghx/internal/update"
 )
 
-var version = "dev"
+// Set at build time with -ldflags "-X main.<name>=<value>". -X sets only strings.
+var (
+	version = "dev"
+	// updateRepo is the owner/repo whose latest release ghx updates itself from.
+	updateRepo = "barnuri/ghx"
+	// selfUpdate is "on" or "off": whether ghx updates itself when the config has no self_update.
+	selfUpdate = "on"
+	// packageManager is "", "homebrew" or "asdf": the package manager that ships this build.
+	packageManager = ""
+)
 
 const (
 	metaCommand          = "ghx"
@@ -45,8 +55,12 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	plan, err := updatePlan(cfg, buildVars{updateRepo, selfUpdate, packageManager}, resolvedExecutable())
+	if err != nil {
+		return err
+	}
 	stateDir := config.StateDir()
-	updater := newUpdater(cfg, stateDir)
+	updater := newUpdater(cfg, stateDir, plan.Self)
 	if len(args) == 1 && args[0] == backgroundUpdateFlag {
 		updater.RunQuietly()
 		return nil
@@ -55,7 +69,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	scheduleUpdate(cfg, stateDir)
+	scheduleUpdate(plan, stateDir)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -84,7 +98,7 @@ func runMeta(args []string, match resolve.Match, ghPath string, updater update.U
 	}
 	switch command {
 	case "which":
-		printWhich(match, ghPath)
+		printWhich(match, ghPath, updater.Self.Policy)
 	case "current":
 		if match.Found() {
 			fmt.Println(match.ProfileName)
@@ -101,11 +115,68 @@ func runMeta(args []string, match resolve.Match, ghPath string, updater update.U
 	return nil
 }
 
-func newUpdater(cfg config.Config, stateDir string) update.Updater {
+type buildVars struct {
+	updateRepo     string
+	selfUpdate     string
+	packageManager string
+}
+
+type plan struct {
+	Self update.Policy
+	// Background is true when the daily detached update check has anything to do.
+	Background bool
+}
+
+// updatePlan combines the build-time variables, the config and the symlink-resolved
+// executable path into the update policy for this run. The config's self_update and
+// update_repo win over the build values. A build packageManager, or an executable inside a
+// Homebrew Cellar or an asdf installs directory, means ghx never replaces itself.
+func updatePlan(cfg config.Config, build buildVars, executable string) (plan, error) {
+	policy := update.Policy{Repo: build.updateRepo, Reason: "build default", ManagedBy: build.packageManager}
+	switch build.selfUpdate {
+	case "on", "off":
+		policy.Enabled = build.selfUpdate == "on"
+	default:
+		return plan{}, fmt.Errorf("invalid build setting main.selfUpdate=%q: want on or off", build.selfUpdate)
+	}
+	switch build.packageManager {
+	case "", update.PackageManagerHomebrew, update.PackageManagerAsdf:
+	default:
+		return plan{}, fmt.Errorf("invalid build setting main.packageManager=%q: want homebrew, asdf or empty", build.packageManager)
+	}
+	if !config.ValidUpdateRepo(build.updateRepo) {
+		return plan{}, fmt.Errorf("invalid build setting main.updateRepo=%q: want owner/repo", build.updateRepo)
+	}
+	if cfg.UpdateRepo != "" {
+		policy.Repo = cfg.UpdateRepo
+	}
+	if cfg.SelfUpdate != nil {
+		policy.Enabled = *cfg.SelfUpdate
+		policy.Reason = fmt.Sprintf("self_update: %t", *cfg.SelfUpdate)
+	}
+	if policy.ManagedBy == "" {
+		policy.ManagedBy = update.DetectPackageManager(executable)
+	}
+	return plan{Self: policy, Background: !cfg.DisableUpdates && (policy.Active() || cfg.ManageGh)}, nil
+}
+
+// resolvedExecutable returns the running binary with symlinks resolved, or "" when unknown.
+func resolvedExecutable() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
+		return resolved
+	}
+	return executable
+}
+
+func newUpdater(cfg config.Config, stateDir string, policy update.Policy) update.Updater {
 	client := release.NewClient()
 	return update.Updater{
 		StateDir: stateDir,
-		Self:     update.SelfUpdater{Client: client, CurrentVersion: version},
+		Self:     update.SelfUpdater{Client: client, CurrentVersion: version, Policy: policy},
 		Gh:       update.ManagedGh{Client: client, StateDir: stateDir},
 		ManageGh: cfg.ManageGh,
 	}
@@ -125,8 +196,8 @@ func locateGh(cfg config.Config, updater update.Updater) (string, error) {
 	return updater.Gh.Path(), nil
 }
 
-func scheduleUpdate(cfg config.Config, stateDir string) {
-	if cfg.DisableUpdates || os.Getenv(noUpdateEnv) != "" || !update.IsDue(stateDir) {
+func scheduleUpdate(plan plan, stateDir string) {
+	if !plan.Background || os.Getenv(noUpdateEnv) != "" || !update.IsDue(stateDir) {
 		return
 	}
 	executable, err := os.Executable()
@@ -158,12 +229,12 @@ func buildEnv(args []string, match resolve.Match, ghPath string) ([]string, erro
 	return proxy.WithProfile(env, match.Profile, token), nil
 }
 
-func printWhich(match resolve.Match, ghPath string) {
+func printWhich(match resolve.Match, ghPath string, policy update.Policy) {
 	if !match.Found() {
-		fmt.Printf("profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
+		fmt.Printf("profile: none (plain gh)\ngh:      %s\nupdates: %s\n", config.AbbreviateHome(ghPath), policy.Describe())
 		return
 	}
-	fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\n",
+	fmt.Printf("profile: %s\nuser:    %s\nhost:    %s\nsource:  %s\ngh:      %s\nupdates: %s\n",
 		match.ProfileName, match.Profile.User, match.Profile.HostOrDefault(),
-		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath))
+		config.AbbreviateHome(match.Source), config.AbbreviateHome(ghPath), policy.Describe())
 }

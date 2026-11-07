@@ -88,6 +88,8 @@ Full example: [examples/config.yaml](examples/config.yaml).
 | `default` | profile for folders outside every `dirs` entry. Default: plain gh |
 | `manage_gh` | `true` makes ghx download gh and keep it updated. Default: use gh from `PATH` |
 | `disable_updates` | `true` stops the daily ghx update check |
+| `self_update` | `true` or `false` turns ghx's self-update on or off. Default: the build's setting (on for these releases) |
+| `update_repo` | `owner/repo` whose latest release ghx updates itself from. Default: the build's setting (`barnuri/ghx`) |
 
 ### Per-repo file: `.ghx`
 
@@ -177,7 +179,7 @@ With no matched profile, ghx does not change git config.
 ghx adds one command group, `gh ghx`. Everything else goes to gh.
 
 ```text
-gh ghx which     Show the profile, gh user and gh binary for the current folder
+gh ghx which     Show the profile, gh user, gh binary and update source for the current folder
 gh ghx current   Print only the profile name (empty when none), for prompts and status lines
 gh ghx update    Update ghx now (and gh when manage_gh is true)
 gh ghx version   Show the ghx version
@@ -214,6 +216,15 @@ sha256 and replaces the binary. With `manage_gh: true` it does the same for gh f
 [cli/cli releases](https://github.com/cli/cli/releases). The result goes to `update.log` in the
 ghx cache dir (`~/Library/Caches/ghx`, `~/.cache/ghx` or `%LOCALAPPDATA%\ghx`).
 Set `GHX_NO_UPDATE=1` or `disable_updates: true` to turn it off.
+
+ghx only moves to a newer version, never to a lower one. `self_update: false` stops ghx replacing
+itself, and `update_repo` changes where it looks. A ghx installed by Homebrew or asdf never
+replaces itself: `gh ghx update` tells you to run `brew upgrade ghx` or `asdf install ghx latest`.
+`gh ghx which` shows the result on its `updates:` line: `on from <repo>`, `off (build default)`,
+`off (self_update: false)` or `managed by <package manager>`.
+
+Builds can change the defaults with `-ldflags`: `-X main.updateRepo=<owner/repo>`,
+`-X main.selfUpdate=off`, and `-X main.packageManager=homebrew` (or `asdf`).
 
 ## Development
 

@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	ghxRepo          = "barnuri/ghx"
 	ghxChecksumsName = "checksums.txt"
 	devVersion       = "dev"
 )
@@ -24,16 +23,22 @@ type ReleaseClient interface {
 type SelfUpdater struct {
 	Client         ReleaseClient
 	CurrentVersion string
+	Policy         Policy
 }
 
-// Update replaces the running ghx binary with the latest release when that release is newer.
-// It returns the new version, or "" when ghx is current, ahead of the latest release, or a
-// local dev build. An unparsable version on either side is an error, never an update.
+// Update replaces the running ghx binary with the latest release of Policy.Repo when that
+// release is newer. It returns the new version, or "" when ghx is current, ahead of the latest
+// release, or a local dev build. An unparsable version on either side is an error, never an
+// update. It touches neither the network nor the binary when a package manager owns the
+// install, or when self-update is off (ErrSelfUpdateDisabled).
 func (updater SelfUpdater) Update() (string, error) {
+	if err := updater.Policy.refusal(); err != nil {
+		return "", err
+	}
 	if updater.CurrentVersion == devVersion {
 		return "", nil
 	}
-	latest, err := updater.Client.Latest(ghxRepo)
+	latest, err := updater.Client.Latest(updater.Policy.Repo)
 	if err != nil {
 		return "", err
 	}

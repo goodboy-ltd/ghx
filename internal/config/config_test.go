@@ -35,6 +35,13 @@ func TestParseRejectsInvalid(t *testing.T) {
 		"bad profile git_identity": "profiles: {work: {user: a, git_identity: never}}",
 		"bad global git_identity":  "git_identity: never",
 		"bad yaml":                 "profiles: [",
+		"update_repo traversal":    "update_repo: ../x",
+		"update_repo no slash":     "update_repo: ghx",
+		"update_repo dot":          "update_repo: a/.",
+		"update_repo dot dot":      "update_repo: a/..",
+		"update_repo extra slash":  "update_repo: a/b/c",
+		"update_repo query":        "update_repo: a/b?x=1",
+		"self_update not a bool":   "self_update: sometimes",
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -43,6 +50,34 @@ func TestParseRejectsInvalid(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseSelfUpdateTriState(t *testing.T) {
+	cases := map[string]*bool{"": nil, "self_update: true": ptr(true), "self_update: false": ptr(false)}
+	for content, want := range cases {
+		t.Run(content, func(t *testing.T) {
+			cfg, err := Parse([]byte(content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (cfg.SelfUpdate == nil) != (want == nil) || (want != nil && *cfg.SelfUpdate != *want) {
+				t.Fatalf("got %v, want %v", cfg.SelfUpdate, want)
+			}
+		})
+	}
+}
+
+func TestParseUpdateRepo(t *testing.T) {
+	for _, repo := range []string{"barnuri/ghx", "goodboy-ltd/ghx", "a-b/c.d_e-f", "x/.github"} {
+		cfg, err := Parse([]byte("update_repo: " + repo))
+		if err != nil || cfg.UpdateRepo != repo {
+			t.Fatalf("%s: got %q, %v", repo, cfg.UpdateRepo, err)
+		}
+	}
+}
+
+func ptr(value bool) *bool {
+	return &value
 }
 
 func TestIdentityForFallsBackToTopLevel(t *testing.T) {
