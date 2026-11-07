@@ -28,3 +28,5 @@ ssh_hosts:
 # default: personal
 # manage_gh: true
 # disable_updates: true
+# self_update: false
+# update_repo: barnuri/ghx
