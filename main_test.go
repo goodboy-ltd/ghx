@@ -168,3 +168,20 @@ func TestPrintWhichShowsUpdatePolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintWhichNamesIgnoredRepoFiles(t *testing.T) {
+	ignored := []resolve.IgnoredFile{{Path: "/repo/.ghx", Reason: "group-writable, mode 0664"}}
+	cases := map[string]resolve.Match{
+		"profile":    {ProfileName: "work", Profile: config.Profile{User: "octocat"}, Source: "/tmp/.ghx", Ignored: ignored},
+		"no profile": {Ignored: ignored},
+	}
+	for name, match := range cases {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			printWhich(&out, match, nil, "/usr/bin/gh", nil, update.Policy{})
+			if got := out.String(); !strings.Contains(got, "\nignored: /repo/.ghx (group-writable, mode 0664)\n") {
+				t.Fatalf("output %q does not name the ignored file", got)
+			}
+		})
+	}
+}
