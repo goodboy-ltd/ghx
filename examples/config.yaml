@@ -21,6 +21,7 @@ ssh_hosts:
   gh-personal: personal
 
 # remote_user: true
+# profiles_only: true
 # default: personal
 # manage_gh: true
 # disable_updates: true

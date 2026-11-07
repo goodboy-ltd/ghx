@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -61,10 +62,18 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	match := resolve.Profile(cfg, cwd, os.Getenv(profileOverrideEnv), resolve.GitOriginURL)
+	match, resolveErr := resolve.Profile(cfg, cwd, os.Getenv(profileOverrideEnv), resolve.GitOriginURL)
 	applyGitIdentity(cfg, match, cwd)
 	if len(args) > 0 && args[0] == metaCommand {
-		return runMeta(args[1:], match, ghPath, updater)
+		return runMeta(args[1:], match, resolveErr, ghPath, updater)
+	}
+	// A refused profile (profiles_only) blocks only commands that need a token, so
+	// gh auth login and gh auth status still run as plain gh and the user can repair the setup.
+	if resolveErr != nil {
+		if proxy.NeedsToken(args) {
+			return resolveErr
+		}
+		fmt.Fprintln(os.Stderr, "ghx:", resolveErr)
 	}
 	env, err := buildEnv(args, match, ghPath)
 	if err != nil {
@@ -78,15 +87,18 @@ func run(args []string) error {
 	return nil
 }
 
-func runMeta(args []string, match resolve.Match, ghPath string, updater update.Updater) error {
+func runMeta(args []string, match resolve.Match, resolveErr error, ghPath string, updater update.Updater) error {
 	command := "help"
 	if len(args) > 0 {
 		command = args[0]
 	}
 	switch command {
 	case "which":
-		printWhich(os.Stdout, match, ghPath, os.Environ())
+		printWhich(os.Stdout, match, resolveErr, ghPath, os.Environ())
 	case "current":
+		if resolveErr != nil {
+			return resolveErr
+		}
 		if match.Found() {
 			fmt.Println(match.ProfileName)
 		}
@@ -159,7 +171,13 @@ func buildEnv(args []string, match resolve.Match, ghPath string) ([]string, erro
 	return proxy.WithProfile(env, match.Profile, token), nil
 }
 
-func printWhich(out io.Writer, match resolve.Match, ghPath string, env []string) {
+func printWhich(out io.Writer, match resolve.Match, resolveErr error, ghPath string, env []string) {
+	var unknown *resolve.UnknownProfileError
+	if errors.As(resolveErr, &unknown) {
+		fmt.Fprintf(out, "profile: %s (refused: not a profile, profiles_only: true)\nsource:  %s\ngh:      %s\n",
+			unknown.Name, config.AbbreviateHome(unknown.Source), config.AbbreviateHome(ghPath))
+		return
+	}
 	if !match.Found() {
 		fmt.Fprintf(out, "profile: none (plain gh)\ngh:      %s\n", config.AbbreviateHome(ghPath))
 		return
